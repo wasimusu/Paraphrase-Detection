@@ -1,0 +1,11 @@
+*.jpg
+*.png
+.idea
+
+# pycharm files
+**/.idea
+*.xml
+*.iml
+
+*.pyc
+*.csv
