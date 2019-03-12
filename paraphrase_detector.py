@@ -1,6 +1,12 @@
-import sklearn
 import numpy as np
-import os
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics import mutual_info_score
+from sklearn.decomposition import TruncatedSVD
+from scipy.special import kl_div
+from scipy.stats import entropy
+
+from dataloader import dataLoader
 
 # Does this require cross validation ?
 # Have a function to measure performance - accuracy depending on threshold
@@ -16,7 +22,8 @@ class ComparePerformance:
             Save processed data so that you don't have to preprocess all the time
         else load processed data
         """
-        pass
+        self.label, self.sx, self.sy = dataLoader(filename)
+        self.svd = TruncatedSVD(n_components=4)
 
     def compare(self):
         """
@@ -32,7 +39,24 @@ class ComparePerformance:
         Call vectors of sentences in db as dbVector
         Call vectors of user query as queryVector
         """
-        pass
+        corpus = self.sx
+        corpus = [
+            'This is the first document.',
+            'This document is the second document.',
+            'And this is the third one.',
+            'Is this the first document?']
+
+        # It requires list of strings (sentences) not list of list
+        self.vectorizer = TfidfVectorizer()
+        self.tfidf = self.vectorizer.fit_transform(corpus)
+        # print(cosine_similarity(self.tfidf[0], self.tfidf[3]))
+        # print(mutual_info_score(self.tfidf[0].todense(), self.tfidf[3].todense()))
+
+        self.reduced_tfidf = self.svd.fit_transform(self.tfidf)
+        print("Cosine : ", cosine_similarity(self.tfidf[0], self.tfidf[3]))
+        print("KL Divergence : ", kl_div(self.reduced_tfidf[0], self.reduced_tfidf[3]))
+        print(self.reduced_tfidf[3])
+        print("Entropy: ", entropy(self.reduced_tfidf[0], self.reduced_tfidf[3]))
 
     @staticmethod
     def accuracy():
@@ -54,4 +78,10 @@ class ComparePerformance:
 
 
 if __name__ == '__main__':
-    pass
+    filename = "data/msr_paraphrase_test.txt"
+    # cp = ComparePerformance(filename=filename)
+    # cp.compare()
+
+    print("Entropy: ", entropy([0.5, 0.5]))
+    print("Entropy: ", entropy([1, 0]))
+    print("Entropy: ", mutual_info_score([0, 1], [1, 0]))
