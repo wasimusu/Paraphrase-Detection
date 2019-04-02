@@ -2,7 +2,7 @@ import os
 import random
 
 
-def dataLoader(filename, shuffle=True):
+def dataLoader(filename):
     """
     The corpus contains lots of things which are not of our interest.
     Read file and discard things that are of not interest to us.
@@ -18,15 +18,17 @@ def dataLoader(filename, shuffle=True):
     # Read file and split into lines
     text = open(filename, mode='r', encoding='utf8').read().lower().splitlines()
 
-    labels, sentenceX, sentenceY = [], [], []
+    labels, sentence1, sentence2 = [], [], []
     for line in text[1:]:
         label, _, _, s1, s2 = line.split("\t")
 
         labels.append(label)
-        sentenceX.append(s1)
-        sentenceY.append(s2)
+        sentence1.append(s1)
+        sentence2.append(s2)
 
-    return labels, sentenceX, sentenceY
+    labels = list(map(int, labels))
+
+    return labels, sentence1, sentence2
 
 
 if __name__ == '__main__':
