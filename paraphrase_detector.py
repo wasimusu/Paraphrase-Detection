@@ -24,6 +24,10 @@ class ComparePerformance:
             Save processed data so that you don't have to preprocess all the time
         else load processed data
         """
+        distance_metrics = {
+            'cosine': cosine_similarity
+        }
+        self.distance_fn = distance_metrics[distance]
 
         train_filename = "data/msr_paraphrase_train.txt"
         test_filename = "data/msr_paraphrase_test.txt"
@@ -45,9 +49,6 @@ class ComparePerformance:
             Find accuracy on paraphrase corpus
             Find delta accuracy
         :return:
-
-        Call vectors of sentences in db as dbVector
-        Call vectors of user query as queryVector
         """
         corpus = self.train_sentence1
         # corpus = [
@@ -56,33 +57,27 @@ class ComparePerformance:
         #     'And this is the third one.',
         #     'Is this the first document?']
 
-        # It requires list of strings (sentences) not list of list
-        self.vectorizer = TfidfVectorizer().fit(corpus)
+        self.vectorizer = TfidfVectorizer().fit(corpus)  # It requires list of strings (sentences) not list of list
+
         self.train_tfidf_1 = self.vectorizer.transform(corpus).todense()
         self.train_tfidf_2 = self.vectorizer.transform(self.train_sentence2).todense()
-        train_features = np.concatenate((self.train_tfidf_1, self.train_tfidf_1), axis=1)
 
         self.test_tfidf_1 = self.vectorizer.transform(self.test_sentence1).todense()
         self.test_tfidf_2 = self.vectorizer.transform(self.test_sentence2).todense()
-        test_features = np.concatenate((self.test_tfidf_1, self.test_tfidf_1), axis=1)
-
-        self.svm.fit(train_features, self.train_labels)
-        accuracy = self.svm.score(test_features, self.test_labels)
-        print("Accuracy on test set : ", accuracy)
 
         accuracy_hdim = self.accuracy(self.train_tfidf_1, self.train_tfidf_2, self.train_labels)
         print("hdim accuracy : ", "%.2f" % accuracy_hdim)
 
-        self.reduced_tfidf_1 = self.svd.fit_transform(self.train_tfidf_1)
-        self.reduced_tfidf_2 = self.svd.fit_transform(self.train_tfidf_2)
+        self.tfidf_1_ldim = self.svd.fit_transform(self.train_tfidf_1)
+        self.tfidf_2_ldim = self.svd.fit_transform(self.train_tfidf_2)
 
-        self.reduced_tfidf_1 = [np.asarray(vec).reshape(1, -1) for vec in self.reduced_tfidf_1]
-        self.reduced_tfidf_2 = [np.asarray(vec).reshape(1, -1) for vec in self.reduced_tfidf_2]
+        self.tfidf_1_ldim = [np.asarray(vec).reshape(1, -1) for vec in self.tfidf_1_ldim]
+        self.tfidf_2_ldim = [np.asarray(vec).reshape(1, -1) for vec in self.tfidf_2_ldim]
 
-        self.reduced_tfidf_1 = np.asarray(self.reduced_tfidf_1)
-        self.reduced_tfidf_2 = np.asarray(self.reduced_tfidf_2)
+        self.tfidf_1_ldim = np.asarray(self.tfidf_1_ldim)
+        self.tfidf_2_ldim = np.asarray(self.tfidf_2_ldim)
 
-        accuracy_ldim = self.accuracy(self.reduced_tfidf_1, self.reduced_tfidf_2, self.train_labels)
+        accuracy_ldim = self.accuracy(self.tfidf_1_ldim, self.tfidf_2_ldim, self.train_labels)
 
         print("ldim accuracy : ", "%.2f" % accuracy_ldim)
 
@@ -94,10 +89,17 @@ class ComparePerformance:
         # print(self.reduced_tfidf[3])
         # print("Entropy: ", entropy(self.reduced_tfidf[0], self.reduced_tfidf[3]))
 
-    @staticmethod
-    def accuracy(tfidf_1, tfidf_2, labels, thresh=0.6):
-        # print("Dimension : ", tfidf_2.shape[1])
-        predicted = [cosine_similarity(vec_1, vec_2).item() > thresh for vec_1, vec_2 in zip(tfidf_1, tfidf_2)]
+    def train(self, train_vec1, train_vec2, train_labels, test_vec1, test_vec2, test_labels):
+        """ Train SVM and find it's accuracy """
+        train_features = np.concatenate((train_vec1, train_vec2), axis=1)
+        test_features = np.concatenate((test_vec1, test_vec2), axis=1)
+        self.svm.fit(train_features, train_labels)
+        accuracy = self.svm.score(test_features, test_labels)
+        print("Accuracy on test set : ", accuracy)
+
+    def accuracy(self, tfidf_1, tfidf_2, labels, thresh=0.6):
+        """ Can use different kinds of distance function """
+        predicted = [self.distance_fn(vec_1, vec_2).item() > thresh for vec_1, vec_2 in zip(tfidf_1, tfidf_2)]
         accuracy = [pred == label for pred, label in zip(predicted, labels)]
         return sum(accuracy) / len(accuracy)
 
