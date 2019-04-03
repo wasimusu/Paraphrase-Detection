@@ -5,6 +5,7 @@ from sklearn.metrics import mutual_info_score
 from sklearn.decomposition import TruncatedSVD
 from scipy.special import kl_div
 from scipy.stats import entropy
+from sklearn.svm import SVC
 
 from dataloader import dataLoader
 
@@ -13,7 +14,7 @@ from dataloader import dataLoader
 # Have a function to measure performance - accuracy depending on threshold
 
 class ComparePerformance:
-    def __init__(self, filename, strategy='tfidf', distance='cosine', use_bigrams=True):
+    def __init__(self, strategy='tfidf', distance='cosine', use_bigrams=True):
         """
         :param strategy: 'tfidf' or 'tfkld'
         :param distance : cosine, kld
@@ -24,9 +25,15 @@ class ComparePerformance:
         else load processed data
         """
 
-        self.labels, self.sentence1, self.sentence2 = dataLoader(filename)
-        assert len(self.sentence1) == len(self.sentence2)
+        train_filename = "data/msr_paraphrase_train.txt"
+        test_filename = "data/msr_paraphrase_test.txt"
+        self.train_labels, self.train_sentence1, self.train_sentence2 = dataLoader(train_filename)
+        self.test_labels, self.test_sentence1, self.test_sentence2 = dataLoader(test_filename)
+        assert len(self.train_sentence1) == len(self.train_sentence2)
+        assert len(self.test_sentence1) == len(self.test_sentence2)
+
         self.svd = TruncatedSVD(n_components=4)
+        self.svm = SVC(gamma='auto')
 
     def compare(self):
         """
@@ -42,7 +49,7 @@ class ComparePerformance:
         Call vectors of sentences in db as dbVector
         Call vectors of user query as queryVector
         """
-        corpus = self.sentence1
+        corpus = self.train_sentence1
         # corpus = [
         #     'This is the first document.',
         #     'This document is the second document.',
@@ -51,14 +58,23 @@ class ComparePerformance:
 
         # It requires list of strings (sentences) not list of list
         self.vectorizer = TfidfVectorizer().fit(corpus)
-        self.tfidf_1 = self.vectorizer.transform(corpus)
-        self.tfidf_2 = self.vectorizer.transform(self.sentence2)
+        self.train_tfidf_1 = self.vectorizer.transform(corpus).todense()
+        self.train_tfidf_2 = self.vectorizer.transform(self.train_sentence2).todense()
+        train_features = np.concatenate((self.train_tfidf_1, self.train_tfidf_1), axis=1)
 
-        accuracy_hdim = self.accuracy(self.tfidf_1, self.tfidf_2, self.labels)
+        self.test_tfidf_1 = self.vectorizer.transform(self.test_sentence1).todense()
+        self.test_tfidf_2 = self.vectorizer.transform(self.test_sentence2).todense()
+        test_features = np.concatenate((self.test_tfidf_1, self.test_tfidf_1), axis=1)
+
+        self.svm.fit(train_features, self.train_labels)
+        accuracy = self.svm.score(test_features, self.test_labels)
+        print("Accuracy on test set : ", accuracy)
+
+        accuracy_hdim = self.accuracy(self.train_tfidf_1, self.train_tfidf_2, self.train_labels)
         print("hdim accuracy : ", "%.2f" % accuracy_hdim)
 
-        self.reduced_tfidf_1 = self.svd.fit_transform(self.tfidf_1)
-        self.reduced_tfidf_2 = self.svd.fit_transform(self.tfidf_2)
+        self.reduced_tfidf_1 = self.svd.fit_transform(self.train_tfidf_1)
+        self.reduced_tfidf_2 = self.svd.fit_transform(self.train_tfidf_2)
 
         self.reduced_tfidf_1 = [np.asarray(vec).reshape(1, -1) for vec in self.reduced_tfidf_1]
         self.reduced_tfidf_2 = [np.asarray(vec).reshape(1, -1) for vec in self.reduced_tfidf_2]
@@ -66,14 +82,14 @@ class ComparePerformance:
         self.reduced_tfidf_1 = np.asarray(self.reduced_tfidf_1)
         self.reduced_tfidf_2 = np.asarray(self.reduced_tfidf_2)
 
-        accuracy_ldim = self.accuracy(self.reduced_tfidf_1, self.reduced_tfidf_2, self.labels)
+        accuracy_ldim = self.accuracy(self.reduced_tfidf_1, self.reduced_tfidf_2, self.train_labels)
 
         print("ldim accuracy : ", "%.2f" % accuracy_ldim)
 
-        # print(cosine_similarity(self.tfidf_1[0], self.tfidf_1[3]))
-        # print(mutual_info_score(self.tfidf_1[0].todense(), self.tfidf_1[3].todense()))
+        # print(cosine_similarity(self.train_tfidf_1[0], self.train_tfidf_1[3]))
+        # print(mutual_info_score(self.train_tfidf_1[0].todense(), self.train_tfidf_1[3].todense()))
 
-        # print("Cosine : ", cosine_similarity(self.tfidf_1[0], self.tfidf_1[3]))
+        # print("Cosine : ", cosine_similarity(self.train_tfidf_1[0], self.train_tfidf_1[3]))
         # print("KL Divergence : ", kl_div(self.reduced_tfidf[0], self.reduced_tfidf[3]))
         # print(self.reduced_tfidf[3])
         # print("Entropy: ", entropy(self.reduced_tfidf[0], self.reduced_tfidf[3]))
@@ -101,8 +117,7 @@ class ComparePerformance:
 
 
 if __name__ == '__main__':
-    filename = "data/msr_paraphrase_test.txt"
-    cp = ComparePerformance(filename=filename)
+    cp = ComparePerformance()
     cp.compare()
 
     # print("Entropy: ", entropy([0.5, 0.5]))
