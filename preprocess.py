@@ -12,6 +12,9 @@ stemmer = PorterStemmer()
 
 
 def in_sorted_list(lists, item):
+    """
+    Returns True if the item is in thesorted list else False
+    """
     index = bisect_left(lists, item)
     if lists[min(index, len(lists) - 1)] == item:
         return True
@@ -21,13 +24,15 @@ def in_sorted_list(lists, item):
 
 def is_stopwords(stopwords, word):
     """
-    Is word in the list of stopwords
-    stopwords should be sorted for this to work
+    Returns True if the word is in thesorted list of stopwords else False
     """
     return in_sorted_list(stopwords, word)
 
 
 def is_useful_bigram(bigrams, bigram):
+    """
+    Returns True if the bigram is in thesorted list of bigrams else False
+    """
     return in_sorted_list(bigrams, bigram)
 
 
