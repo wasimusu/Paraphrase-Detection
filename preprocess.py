@@ -121,11 +121,10 @@ class Preprocess:
 
 
 if __name__ == '__main__':
-    text = "What are the uses of credit card ? Can I get a credit card today? Ram is a player. He plays play cricket really well"
+    text = "What are the uses of credit card ? ## Can I get a credit card today? ## Ram is a player? ## He plays play cricket really well"
     p = Preprocess(bigrams=True, vocab_size=22)
     p.build_vocab(text, stem=True)
     print(p.vocab.__len__())
     p.generate_bigrams()
-    ps = p.preprocess(text.split("?"))
+    ps = p.preprocess(text.split("##"))
     print(ps)
-    pass

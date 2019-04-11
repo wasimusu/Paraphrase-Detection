@@ -2,6 +2,7 @@ sklearn
 scipy
 numpy
 matplotlib=3.0.2
+nltk
 
 # if these libraries do not exist in your environment just
 # pip install -r requirements.txt

@@ -10,7 +10,7 @@ from preprocess import Preprocess
 
 
 class ParaphraseDetector:
-    def __init__(self, distance='cosine', use_bigrams=True, stem=True):
+    def __init__(self, distance='cosine', use_bigrams=True, stem=True, vocab_size=8000, reduced_vocab_size=4000):
         """
         :param distance : cosine, kld
         Steps:
@@ -24,30 +24,31 @@ class ParaphraseDetector:
             'kld': self.kld
         }
         self.distance_fn = distance_metrics[distance]
+        self.distance = distance
 
         train_filename = "data/msr_paraphrase_train.txt"
         test_filename = "data/msr_paraphrase_test.txt"
-        self.train_labels, self.train_sentence1, self.train_sentence2 = dataLoader(train_filename)
-        self.test_labels, self.test_sentence1, self.test_sentence2 = dataLoader(test_filename)
-        assert len(self.train_sentence1) == len(self.train_sentence2)
-        assert len(self.test_sentence1) == len(self.test_sentence2)
+        self.train_labels, self.train_pair1, self.train_pair2 = dataLoader(train_filename)
+        self.test_labels, self.test_pair1, self.test_pair2 = dataLoader(test_filename)
+        assert len(self.train_pair1) == len(self.train_pair2)
+        assert len(self.test_pair1) == len(self.test_pair2)
 
-        self.svd = TruncatedSVD(n_components=8000)
+        self.svd = TruncatedSVD(n_components=reduced_vocab_size)
         self.svm = SVC(gamma='auto')
 
-        text = self.train_sentence2 + self.train_sentence1
+        text = self.train_pair2 + self.train_pair1
         text = " ".join(text)
 
-        self.preprocess = Preprocess(bigrams=True)
-        self.preprocess.build_vocab(text, stem=True)
+        self.preprocess = Preprocess(bigrams=use_bigrams, vocab_size=vocab_size)
+        self.preprocess.build_vocab(text, stem=stem)
         print("Vocab : ", len(self.preprocess.vocab))
         self.preprocess.generate_bigrams(t=2, threshold=0.05)
 
-        self.train_sentence1 = self.preprocess.preprocess(self.train_sentence1)
-        self.train_sentence2 = self.preprocess.preprocess(self.train_sentence2)
+        self.train_pair1 = self.preprocess.preprocess(self.train_pair1)
+        self.train_pair2 = self.preprocess.preprocess(self.train_pair2)
 
-        self.test_sentence1 = self.preprocess.preprocess(self.test_sentence1)
-        self.test_sentence2 = self.preprocess.preprocess(self.test_sentence2)
+        self.test_pair1 = self.preprocess.preprocess(self.test_pair1)
+        self.test_pair2 = self.preprocess.preprocess(self.test_pair2)
 
     def compare(self):
         """
@@ -60,7 +61,9 @@ class ParaphraseDetector:
             Find delta accuracy
         :return:
         """
-        corpus = self.train_sentence1 + self.train_sentence2
+        use_svm = True
+
+        corpus = self.train_pair1 + self.train_pair2
         # corpus = [
         #     'This is the first document.',
         #     'This document is the second document.',
@@ -70,27 +73,45 @@ class ParaphraseDetector:
         self.vectorizer = TfidfVectorizer().fit(corpus)  # It requires list of strings (sentences) not list of list
         print("tfidf Vocab  size : ", self.vectorizer.vocabulary_.__len__())
 
-        self.train_tfidf_1 = self.vectorizer.transform(self.train_sentence1).todense()
-        self.train_tfidf_2 = self.vectorizer.transform(self.train_sentence2).todense()
+        # vectors in high dimension
+        train_vec1 = self.vectorizer.transform(self.train_pair1).todense()
+        train_vec2 = self.vectorizer.transform(self.train_pair2).todense()
 
-        self.test_tfidf_1 = self.vectorizer.transform(self.test_sentence1).todense()
-        self.test_tfidf_2 = self.vectorizer.transform(self.test_sentence2).todense()
+        test_vec1 = self.vectorizer.transform(self.test_pair1).todense()
+        test_vec2 = self.vectorizer.transform(self.test_pair2).todense()
 
-        accuracy_hdim = self.accuracy(self.train_tfidf_1, self.train_tfidf_2, self.train_labels, 0.625)
-        print("hdim accuracy : ", "%.2f" % accuracy_hdim)
+        accuracy_hdim = self.accuracy(train_vec1, train_vec2, self.train_labels, 0.625)
+        print("hdim accuracy using {} : {}".format(self.distance, "%.2f" % accuracy_hdim))
 
-        self.tfidf_1_ldim = self.svd.fit_transform(self.train_tfidf_1)
-        self.tfidf_2_ldim = self.svd.fit_transform(self.train_tfidf_2)
+        if use_svm:
+            self.train(train_vec1, train_vec2, self.train_labels, test_vec1, test_vec2, self.test_labels)
 
-        self.tfidf_1_ldim = [np.asarray(vec).reshape(1, -1) for vec in self.tfidf_1_ldim]
-        self.tfidf_2_ldim = [np.asarray(vec).reshape(1, -1) for vec in self.tfidf_2_ldim]
+        # vectors in low dimension
+        train_vec1_ldim = self.svd.fit_transform(train_vec1)
+        train_vec2_ldim = self.svd.fit_transform(train_vec2)
 
-        self.tfidf_1_ldim = np.asarray(self.tfidf_1_ldim)
-        self.tfidf_2_ldim = np.asarray(self.tfidf_2_ldim)
+        train_vec1_ldim = [np.asarray(vec).reshape(1, -1) for vec in train_vec1_ldim]
+        train_vec2_ldim = [np.asarray(vec).reshape(1, -1) for vec in train_vec2_ldim]
 
-        accuracy_ldim = self.accuracy(self.tfidf_1_ldim, self.tfidf_2_ldim, self.train_labels)
+        train_vec1_ldim = np.asarray(train_vec1_ldim)
+        train_vec2_ldim = np.asarray(train_vec2_ldim)
 
-        print("ldim accuracy : ", "%.2f" % accuracy_ldim, 0.4)
+        test_vec1_ldim = self.svd.fit_transform(test_vec1)
+        test_vec2_ldim = self.svd.fit_transform(test_vec2)
+
+        test_vec1_ldim = [np.asarray(vec).reshape(1, -1) for vec in test_vec1_ldim]
+        test_vec2_ldim = [np.asarray(vec).reshape(1, -1) for vec in test_vec2_ldim]
+
+        test_vec1_ldim = np.asarray(test_vec1_ldim)
+        test_vec2_ldim = np.asarray(test_vec2_ldim)
+
+        accuracy_ldim = self.accuracy(train_vec1_ldim, train_vec2_ldim, self.train_labels)
+
+        print("ldim accuracy using {} : {}".format(self.distance, "%.2f" % accuracy_ldim))
+
+        if use_svm:
+            self.train(train_vec1_ldim, train_vec2_ldim, self.train_labels, test_vec1_ldim, test_vec2_ldim,
+                       self.test_labels)
 
     def train(self, train_vec1, train_vec2, train_labels, test_vec1, test_vec2, test_labels):
         """ Train SVM and find it's accuracy """
@@ -98,7 +119,7 @@ class ParaphraseDetector:
         test_features = np.concatenate((test_vec1, test_vec2), axis=1)
         self.svm.fit(train_features, train_labels)
         accuracy = self.svm.score(test_features, test_labels)
-        print("Accuracy on test set : ", accuracy)
+        return accuracy
 
     def accuracy(self, tfidf_1, tfidf_2, labels, thresh=0.6):
         """ Can use different kinds of distance function """
@@ -147,9 +168,12 @@ class ParaphraseDetector:
 
 
 if __name__ == '__main__':
-    cp = ParaphraseDetector(distance='cosine')
-    cp.compare()
+    distances = ['cosine', 'kld']
+    vocab_size = 8000
+    reduced_vocab = [1000, 2000, 4000, 6000]
+    reduced_vocab = [6000]
 
-    # print("Entropy: ", entropy([0.5, 0.5]))
-    # print("Entropy: ", entropy([1, 0]))
-    # print("Entropy: ", mutual_info_score([0, 1], [1, 0]))
+    for r_vocab in reduced_vocab:
+        for distance in distances:
+            cp = ParaphraseDetector(distance=distance)
+            cp.compare()
