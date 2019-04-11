@@ -1,5 +1,6 @@
 from collections import Counter
 import os
+from bisect import bisect_left
 
 import nltk
 from nltk import WordPunctTokenizer, PunktSentenceTokenizer, PorterStemmer
@@ -10,18 +11,42 @@ word_tokenizer = WordPunctTokenizer()
 stemmer = PorterStemmer()
 
 
-def generate_bigrams(text, save_filename='data/useful_bigrams.txt'):
+def in_sorted_list(lists, item):
+    index = bisect_left(lists, item)
+    if lists[min(index, len(lists) - 1)] == item:
+        return True
+    else:
+        return False
+
+
+def is_stopwords(stopwords, word):
+    """
+    Is word in the list of stopwords
+    stopwords should be sorted for this to work
+    """
+    return in_sorted_list(stopwords, word)
+
+
+def is_useful_bigram(bigrams, bigram):
+    return in_sorted_list(bigrams, bigram)
+
+
+def generate_bigrams(text, save_filename='data/useful_bigrams.txt', read_percent=1, bigram_percent=0.05):
     """
     Given text, generate pairs of useful bigrams
     :returns : list of useful bigrams
 
     >> [a_b, c_d, ]
     """
-    text = text.lower()
-    text = text[:int(len(text) * 0.01)]
+    stopwords = open("data/stopwords", mode='r', encoding='utf8').read().splitlines()
+    stopwords = sorted(stopwords)
+    assert is_stopwords(stopwords, "yourselves")
 
-    # words = word_tokenizer.tokenize(text)
+    text = text.lower()
+    text = text[:int(len(text) * read_percent)]
+
     words = word_tokenize(text)
+    words = [word for word in words if not is_stopwords(stopwords, word)]
     print(len(words), " words")
 
     words = [stemmer.stem(word) for word in words]
@@ -29,12 +54,17 @@ def generate_bigrams(text, save_filename='data/useful_bigrams.txt'):
     bigrams = ["_".join(bigram) for bigram in bigrams]
 
     print("Filtering from {} bigrams".format(len(bigrams)))
-    bigrams_counter = Counter(bigrams).most_common(int(0.05 * len(bigrams)))
-    stopwords = open("data/stopwords", mode='r', encoding='utf8').readlines()
-    useful_bigrams = [bigram for bigram, count in bigrams_counter if bigram[0] not in stopwords and bigram[1] not in stopwords]
+    bigrams_counter = Counter(bigrams).most_common(int(bigram_percent * len(bigrams)))
 
-    print("Selected a total of {} bigrams : ".format(len(useful_bigrams)))
+    useful_bigrams = []
+    for bigram, count in bigrams_counter:
+        a, b = bigram.split("_")
+        if not (is_stopwords(stopwords, a) or is_stopwords(stopwords, b)):
+            useful_bigrams.append(bigram)
 
+    print("Selected a total of {} bigrams".format(len(useful_bigrams)))
+
+    useful_bigrams = sorted(useful_bigrams)
     with open(save_filename, mode='w', encoding='utf8') as file:
         file.write("\n".join(useful_bigrams))
 
@@ -49,8 +79,11 @@ class Preprocess:
         self.bigrams = bigrams
         self.stopwords = open("data/stopwords", mode='r', encoding='utf8').readlines()
         self.remove_stopwords = remove_stopwords
+
+        self.useful_bigrams = []
         if os.path.exists(bigram_filename):
-            self.useful_bigrams = open(bigram_filename, mode='r', encoding='utf8').readlines()
+            self.useful_bigrams = open(bigram_filename, mode='r', encoding='utf8').read().splitlines()
+            self.useful_bigrams = sorted(self.useful_bigrams)
 
     def build_vocab(self, text, stem=True):
         """
@@ -66,7 +99,6 @@ class Preprocess:
         all_vocab = set(self.words)
 
         if stem:
-            print("Stemmin")
             lemmatized_vocab = [stemmer.stem(word) for word in all_vocab]
             self.lemmatized_dict = dict(zip(all_vocab, lemmatized_vocab))
             self.words = [self.lemmatized_dict[word] for word in self.words]
@@ -97,6 +129,7 @@ class Preprocess:
         processed_sentences = []
         for sentence in sentences:
             sentence = word_tokenizer.tokenize(sentence)
+            sentence = [word for word in sentence if not is_stopwords(self.stopwords, word)]
 
             sentence = [stemmer.stem(word) for word in sentence]
 
@@ -106,7 +139,7 @@ class Preprocess:
             if self.bigrams:
                 bigrams = list(nltk.bigrams(sentence))
                 bigrams = ["_".join(bigram) for bigram in bigrams]
-                bigrams = [bigram for bigram in bigrams if bigram in self.useful_bigrams]
+                bigrams = [bigram for bigram in bigrams if is_useful_bigram(self.useful_bigrams, bigram)]
                 sentence += bigrams
 
             sentence = " ".join(sentence)
@@ -114,52 +147,10 @@ class Preprocess:
 
         return processed_sentences
 
-    def generate_bigrams(self, t=1, threshold=0.05):
-        """
-        Given text, generate pairs of useful bigrams
-
-        Formula to generate bigram:
-            is_valid_pair(a,b) = count(a, b) - threshold / (count(a) * count(b))
-
-        :returns : list of useful bigrams
-
-        >> [a_b, c_d, ]
-        """
-        eps = 1e-100
-
-        lemmatized_vocab = [stemmer.stem(word) for word in self.vocab]
-        lemmatized_dict = dict(zip(self.vocab, lemmatized_vocab))
-        words = [lemmatized_dict.get(word, 'unk') for word in self.words]
-        bigrams = list(nltk.bigrams(words))
-
-        word_counter = Counter(words)
-        bigrams_counter = Counter(bigrams)
-
-        useful_bigrams = []
-        for bigram, count in bigrams_counter.items():
-            score = (bigrams_counter[bigram] - t) / (word_counter[bigram[0]] * word_counter[bigram[1]] + eps)
-            if score > threshold:
-                useful_bigrams.append(bigram)
-
-        useful_bigrams = ["_".join(bigram) for bigram in useful_bigrams]
-        self.useful_bigrams = sorted(useful_bigrams)
-
-        with open(self.bigram_filename, mode='w', encoding='utf8') as file:
-            file.write("\n".join(useful_bigrams))
-
-        return self.useful_bigrams
-
 
 if __name__ == '__main__':
-    # text = "What are the uses of credit card ? ## Can I get a credit card today? ## Ram is a player? ## He plays play cricket really well"
-    # generate_bigrams(text, t=1)
+    text = open("data/squad-base", mode='r', encoding='utf8').read().lower()
+    generate_bigrams(text, save_filename='squad_bigrams', read_percent=1, bigram_percent=0.01)
 
-    text = open("data/base", mode='r', encoding='utf8').read().lower()
-    generate_bigrams(text)
-
-    # p = Preprocess(bigrams=True, vocab_size=22)
-    # p.build_vocab(text, stem=True)
-    # print(p.vocab.__len__())
-    # p.generate_bigrams()
-    # ps = p.preprocess(text.split("##"))
-    # print(ps)
+    # text = open("data/base", mode='r', encoding='utf8').read().lower()
+    # generate_bigrams(text, save_filename='base_bigrams', read_percent=0.05, bigram_percent=0.001)

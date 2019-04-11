@@ -34,24 +34,23 @@ class ParaphraseDetector:
         assert len(self.test_pair1) == len(self.test_pair2)
 
         self.svd = TruncatedSVD(n_components=reduced_vocab_size)
-        self.svm = SVC(gamma='auto')
+        self.svm = SVC(gamma='auto', class_weight="balanced")
 
         text = self.train_pair2 + self.train_pair1
         text = " ".join(text)
 
         self.preprocess = Preprocess(bigrams=use_bigrams, vocab_size=vocab_size)
         self.preprocess.build_vocab(text, stem=stem)
-        print("Vocab : ", len(self.preprocess.vocab))
-        self.preprocess.generate_bigrams(t=2, threshold=0.05)
 
-        self.train_pair1 = self.preprocess.preprocess(self.train_pair1)[:100]
-        self.train_pair2 = self.preprocess.preprocess(self.train_pair2)[:100]
+        n = 2000
+        self.train_pair1 = self.preprocess.preprocess(self.train_pair1)[:n]
+        self.train_pair2 = self.preprocess.preprocess(self.train_pair2)[:n]
 
-        self.test_pair1 = self.preprocess.preprocess(self.test_pair1)[:100]
-        self.test_pair2 = self.preprocess.preprocess(self.test_pair2)[:100]
+        self.test_pair1 = self.preprocess.preprocess(self.test_pair1)[:n]
+        self.test_pair2 = self.preprocess.preprocess(self.test_pair2)[:n]
 
-        self.train_labels = self.train_labels[:100]
-        self.test_labels = self.test_labels[:100]
+        self.train_labels = self.train_labels[:n]
+        self.test_labels = self.test_labels[:n]
 
     def compare(self):
         """
@@ -77,30 +76,33 @@ class ParaphraseDetector:
         test_vec1 = self.vectorizer.transform(self.test_pair1).todense()
         test_vec2 = self.vectorizer.transform(self.test_pair2).todense()
 
-        accuracy_hdim = self.accuracy(train_vec1, train_vec2, self.train_labels, 0.625)
-        print("hdim accuracy using {} : {}".format(self.distance, "%.2f" % accuracy_hdim))
+        # accuracy_hdim = self.accuracy(train_vec1, train_vec2, self.train_labels, 0.585)
+        accuracy, f1_score = self.accuracy(train_vec1, train_vec2, self.train_labels, 0.685)  # With bigrams
+        print("hdim accuracy, f1 score using {} : {}\t{}".format(self.distance, "%.4f" % accuracy, "%.4f" % f1_score))
 
-        if use_svm:
-            svm_score = self.train(train_vec1, train_vec2, self.train_labels, test_vec1, test_vec2, self.test_labels)
-            print("SVM high dimensional : ", svm_score)
+        # if use_svm:
+        #     svm_score = self.train(train_vec1, train_vec2, self.train_labels, test_vec1, test_vec2, self.test_labels)
+        #     print("SVM high dimensional accuracy : ", svm_score)
 
         # vectors in low dimension
-        train_vec1_ldim = self.project_vector(train_vec1)
+        train_vec1_ldim = self.project_vector(train_vec1, fit=True)
         train_vec2_ldim = self.project_vector(train_vec2)
         test_vec1_ldim = self.project_vector(test_vec1)
         test_vec2_ldim = self.project_vector(test_vec2)
 
-        accuracy_ldim = self.accuracy(train_vec1_ldim, train_vec2_ldim, self.train_labels)
-        print("ldim accuracy using {} : {}".format(self.distance, "%.2f" % accuracy_ldim))
+        accuracy, f1_score = self.accuracy(train_vec1_ldim, train_vec2_ldim, self.train_labels, 0.7)
+        print("ldim accuracy, f1 score using {} : {}\t{}".format(self.distance, "%.4f" % accuracy, "%.4f" % f1_score))
 
         if use_svm:
             svm_score = self.train(train_vec1_ldim, train_vec2_ldim, self.train_labels, test_vec1_ldim, test_vec2_ldim,
                                    self.test_labels)
-            print("SVM low dimensional : ", svm_score)
+            print("SVM low dimensional accuracy: ", svm_score)
 
-    def project_vector(self, vec):
+    def project_vector(self, vec, fit=False):
         """ Project vector into a low dimension space """
-        vec = self.svd.fit_transform(vec)
+        if fit:
+            self.svd.fit(vec)
+        vec = self.svd.transform(vec)
         return vec
 
     def train(self, train_vec1, train_vec2, train_labels, test_vec1, test_vec2, test_labels):
@@ -124,18 +126,37 @@ class ParaphraseDetector:
         false_score = [score for score, label in zip(scores, labels) if label == 0]
         true_score = [score for score, label in zip(scores, labels) if label == 1]
 
-        false_score = sorted(false_score)[:(int(1 * len(false_score)))]
-        true_score = sorted(true_score, reverse=True)[:(int(1 * len(true_score)))]
+        slack = 0.5
+        n = 1 - slack
+        false_score = sorted(false_score)[:(int(n * len(false_score)))]
+        true_score = sorted(true_score, reverse=True)[:(int(n * len(true_score)))]
         auto_thresh = (np.average(false_score) + np.average(true_score)) / 2
 
-        print("False average : ", "%.2f" % np.average(false_score))
-        print("True average : ", "%.2f" % np.average(true_score))
         print("Auto Thresh : ", "%.2f" % auto_thresh)
-        print()
 
         predicted = [score >= thresh for score in scores]
         accuracy = [pred == label for pred, label in zip(predicted, labels)]
-        return sum(accuracy) / len(accuracy)
+        accuracy = sum(accuracy) / len(accuracy)
+
+        # Compute precision, recall and f1_score
+        true_positive, true_negative, false_positive, false_negative = 0, 0, 0, 0
+        for ground_truth, estimated in zip(labels, predicted):
+            if ground_truth == True:
+                if estimated == True:
+                    true_positive += 1
+                else:
+                    false_negative += 1
+            else:
+                if estimated == False:
+                    true_negative += 1
+                else:
+                    false_positive += 1
+        eps = 1e-100
+        precision = true_positive / (true_positive + false_positive + eps)
+        recall = true_positive / (true_positive + false_negative + eps)
+        f1_score = 2 * (precision * recall) / (precision + recall + eps)
+
+        return accuracy, f1_score
 
     @staticmethod
     def kld(p, q):
@@ -147,7 +168,7 @@ class ParaphraseDetector:
         eps = 0
         p += eps
         q += eps
-        kl = 1 - sum(entropy(p, q))
+        kl = sum(entropy(p, q))
         return kl
 
     def inference(self, query):
@@ -166,12 +187,14 @@ class ParaphraseDetector:
 
 
 if __name__ == '__main__':
-    distances = ['cosine', 'kld']
+    distances = ['cosine']
     vocab_size = 8000
-    # reduced_vocab = [1000, 2000, 4000, 6000]
+    reduced_vocab = [1000, 2000, 4000, 6000]
     reduced_vocab = [1000]
 
+    print("Vocab Size : ", vocab_size)
     for r_vocab in reduced_vocab:
         for distance in distances:
+            print("Distance : {} \tReduced vocab : {}".format(distance, r_vocab))
             cp = ParaphraseDetector(distance=distance, reduced_vocab_size=r_vocab, vocab_size=vocab_size)
             cp.compare()
