@@ -3,10 +3,42 @@ import os
 
 import nltk
 from nltk import WordPunctTokenizer, PunktSentenceTokenizer, PorterStemmer
+from nltk.tokenize import word_tokenize
 
 sent_tokenizer = PunktSentenceTokenizer()
 word_tokenizer = WordPunctTokenizer()
 stemmer = PorterStemmer()
+
+
+def generate_bigrams(text, save_filename='data/useful_bigrams.txt'):
+    """
+    Given text, generate pairs of useful bigrams
+    :returns : list of useful bigrams
+
+    >> [a_b, c_d, ]
+    """
+    text = text.lower()
+    text = text[:int(len(text) * 0.01)]
+
+    # words = word_tokenizer.tokenize(text)
+    words = word_tokenize(text)
+    print(len(words), " words")
+
+    words = [stemmer.stem(word) for word in words]
+    bigrams = nltk.bigrams(words)
+    bigrams = ["_".join(bigram) for bigram in bigrams]
+
+    print("Filtering from {} bigrams".format(len(bigrams)))
+    bigrams_counter = Counter(bigrams).most_common(int(0.05 * len(bigrams)))
+    stopwords = open("data/stopwords", mode='r', encoding='utf8').readlines()
+    useful_bigrams = [bigram for bigram, count in bigrams_counter if bigram[0] not in stopwords and bigram[1] not in stopwords]
+
+    print("Selected a total of {} bigrams : ".format(len(useful_bigrams)))
+
+    with open(save_filename, mode='w', encoding='utf8') as file:
+        file.write("\n".join(useful_bigrams))
+
+    return useful_bigrams
 
 
 class Preprocess:
@@ -97,9 +129,7 @@ class Preprocess:
 
         lemmatized_vocab = [stemmer.stem(word) for word in self.vocab]
         lemmatized_dict = dict(zip(self.vocab, lemmatized_vocab))
-        # print("Words ", words)
         words = [lemmatized_dict.get(word, 'unk') for word in self.words]
-        # print("Lemmatized :", words)
         bigrams = list(nltk.bigrams(words))
 
         word_counter = Counter(words)
@@ -121,10 +151,15 @@ class Preprocess:
 
 
 if __name__ == '__main__':
-    text = "What are the uses of credit card ? ## Can I get a credit card today? ## Ram is a player? ## He plays play cricket really well"
-    p = Preprocess(bigrams=True, vocab_size=22)
-    p.build_vocab(text, stem=True)
-    print(p.vocab.__len__())
-    p.generate_bigrams()
-    ps = p.preprocess(text.split("##"))
-    print(ps)
+    # text = "What are the uses of credit card ? ## Can I get a credit card today? ## Ram is a player? ## He plays play cricket really well"
+    # generate_bigrams(text, t=1)
+
+    text = open("data/base", mode='r', encoding='utf8').read().lower()
+    generate_bigrams(text)
+
+    # p = Preprocess(bigrams=True, vocab_size=22)
+    # p.build_vocab(text, stem=True)
+    # print(p.vocab.__len__())
+    # p.generate_bigrams()
+    # ps = p.preprocess(text.split("##"))
+    # print(ps)

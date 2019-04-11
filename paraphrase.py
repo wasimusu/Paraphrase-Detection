@@ -44,11 +44,14 @@ class ParaphraseDetector:
         print("Vocab : ", len(self.preprocess.vocab))
         self.preprocess.generate_bigrams(t=2, threshold=0.05)
 
-        self.train_pair1 = self.preprocess.preprocess(self.train_pair1)
-        self.train_pair2 = self.preprocess.preprocess(self.train_pair2)
+        self.train_pair1 = self.preprocess.preprocess(self.train_pair1)[:100]
+        self.train_pair2 = self.preprocess.preprocess(self.train_pair2)[:100]
 
-        self.test_pair1 = self.preprocess.preprocess(self.test_pair1)
-        self.test_pair2 = self.preprocess.preprocess(self.test_pair2)
+        self.test_pair1 = self.preprocess.preprocess(self.test_pair1)[:100]
+        self.test_pair2 = self.preprocess.preprocess(self.test_pair2)[:100]
+
+        self.train_labels = self.train_labels[:100]
+        self.test_labels = self.test_labels[:100]
 
     def compare(self):
         """
@@ -64,11 +67,6 @@ class ParaphraseDetector:
         use_svm = True
 
         corpus = self.train_pair1 + self.train_pair2
-        # corpus = [
-        #     'This is the first document.',
-        #     'This document is the second document.',
-        #     'And this is the third one.',
-        #     'Is this the first document?']
 
         self.vectorizer = TfidfVectorizer().fit(corpus)  # It requires list of strings (sentences) not list of list
         print("tfidf Vocab  size : ", self.vectorizer.vocabulary_.__len__())
@@ -76,7 +74,6 @@ class ParaphraseDetector:
         # vectors in high dimension
         train_vec1 = self.vectorizer.transform(self.train_pair1).todense()
         train_vec2 = self.vectorizer.transform(self.train_pair2).todense()
-
         test_vec1 = self.vectorizer.transform(self.test_pair1).todense()
         test_vec2 = self.vectorizer.transform(self.test_pair2).todense()
 
@@ -84,34 +81,27 @@ class ParaphraseDetector:
         print("hdim accuracy using {} : {}".format(self.distance, "%.2f" % accuracy_hdim))
 
         if use_svm:
-            self.train(train_vec1, train_vec2, self.train_labels, test_vec1, test_vec2, self.test_labels)
+            svm_score = self.train(train_vec1, train_vec2, self.train_labels, test_vec1, test_vec2, self.test_labels)
+            print("SVM high dimensional : ", svm_score)
 
         # vectors in low dimension
-        train_vec1_ldim = self.svd.fit_transform(train_vec1)
-        train_vec2_ldim = self.svd.fit_transform(train_vec2)
-
-        train_vec1_ldim = [np.asarray(vec).reshape(1, -1) for vec in train_vec1_ldim]
-        train_vec2_ldim = [np.asarray(vec).reshape(1, -1) for vec in train_vec2_ldim]
-
-        train_vec1_ldim = np.asarray(train_vec1_ldim)
-        train_vec2_ldim = np.asarray(train_vec2_ldim)
-
-        test_vec1_ldim = self.svd.fit_transform(test_vec1)
-        test_vec2_ldim = self.svd.fit_transform(test_vec2)
-
-        test_vec1_ldim = [np.asarray(vec).reshape(1, -1) for vec in test_vec1_ldim]
-        test_vec2_ldim = [np.asarray(vec).reshape(1, -1) for vec in test_vec2_ldim]
-
-        test_vec1_ldim = np.asarray(test_vec1_ldim)
-        test_vec2_ldim = np.asarray(test_vec2_ldim)
+        train_vec1_ldim = self.project_vector(train_vec1)
+        train_vec2_ldim = self.project_vector(train_vec2)
+        test_vec1_ldim = self.project_vector(test_vec1)
+        test_vec2_ldim = self.project_vector(test_vec2)
 
         accuracy_ldim = self.accuracy(train_vec1_ldim, train_vec2_ldim, self.train_labels)
-
         print("ldim accuracy using {} : {}".format(self.distance, "%.2f" % accuracy_ldim))
 
         if use_svm:
-            self.train(train_vec1_ldim, train_vec2_ldim, self.train_labels, test_vec1_ldim, test_vec2_ldim,
-                       self.test_labels)
+            svm_score = self.train(train_vec1_ldim, train_vec2_ldim, self.train_labels, test_vec1_ldim, test_vec2_ldim,
+                                   self.test_labels)
+            print("SVM low dimensional : ", svm_score)
+
+    def project_vector(self, vec):
+        """ Project vector into a low dimension space """
+        vec = self.svd.fit_transform(vec)
+        return vec
 
     def train(self, train_vec1, train_vec2, train_labels, test_vec1, test_vec2, test_labels):
         """ Train SVM and find it's accuracy """
@@ -123,7 +113,14 @@ class ParaphraseDetector:
 
     def accuracy(self, tfidf_1, tfidf_2, labels, thresh=0.6):
         """ Can use different kinds of distance function """
-        scores = [self.distance_fn(vec_1, vec_2).item() for vec_1, vec_2 in zip(tfidf_1, tfidf_2)]
+        # Reshape the vectors to have 2 dimensions
+        dim = tfidf_1[0].shape.__len__()
+        if dim == 1:
+            tfidf_1 = [vec.reshape(1, -1) for vec in tfidf_1]
+            tfidf_2 = [vec.reshape(1, -1) for vec in tfidf_2]
+
+        scores = [self.distance_fn(vec_1, vec_2).item() for vec_1, vec_2 in
+                  zip(tfidf_1, tfidf_2)]
         false_score = [score for score, label in zip(scores, labels) if label == 0]
         true_score = [score for score, label in zip(scores, labels) if label == 1]
 
@@ -131,9 +128,10 @@ class ParaphraseDetector:
         true_score = sorted(true_score, reverse=True)[:(int(1 * len(true_score)))]
         auto_thresh = (np.average(false_score) + np.average(true_score)) / 2
 
-        print("False average : ", np.average(false_score))
-        print("True average : ", np.average(true_score))
-        print("Auto Thresh : ", auto_thresh)
+        print("False average : ", "%.2f" % np.average(false_score))
+        print("True average : ", "%.2f" % np.average(true_score))
+        print("Auto Thresh : ", "%.2f" % auto_thresh)
+        print()
 
         predicted = [score >= thresh for score in scores]
         accuracy = [pred == label for pred, label in zip(predicted, labels)]
@@ -170,10 +168,10 @@ class ParaphraseDetector:
 if __name__ == '__main__':
     distances = ['cosine', 'kld']
     vocab_size = 8000
-    reduced_vocab = [1000, 2000, 4000, 6000]
-    reduced_vocab = [6000]
+    # reduced_vocab = [1000, 2000, 4000, 6000]
+    reduced_vocab = [1000]
 
     for r_vocab in reduced_vocab:
         for distance in distances:
-            cp = ParaphraseDetector(distance=distance)
+            cp = ParaphraseDetector(distance=distance, reduced_vocab_size=r_vocab, vocab_size=vocab_size)
             cp.compare()
