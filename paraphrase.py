@@ -42,7 +42,7 @@ class ParaphraseDetector:
         self.preprocess = Preprocess(bigrams=use_bigrams, vocab_size=vocab_size)
         self.preprocess.build_vocab(text, stem=stem)
 
-        n = 2000
+        n = -1
         self.train_pair1 = self.preprocess.preprocess(self.train_pair1)[:n]
         self.train_pair2 = self.preprocess.preprocess(self.train_pair2)[:n]
 
@@ -63,12 +63,10 @@ class ParaphraseDetector:
             Find delta accuracy
         :return:
         """
-        use_svm = True
-
         corpus = self.train_pair1 + self.train_pair2
 
         self.vectorizer = TfidfVectorizer().fit(corpus)  # It requires list of strings (sentences) not list of list
-        print("tfidf Vocab  size : ", self.vectorizer.vocabulary_.__len__())
+        # print("tfidf Vocab  size : ", self.vectorizer.vocabulary_.__len__())
 
         # vectors in high dimension
         train_vec1 = self.vectorizer.transform(self.train_pair1).todense()
@@ -76,13 +74,12 @@ class ParaphraseDetector:
         test_vec1 = self.vectorizer.transform(self.test_pair1).todense()
         test_vec2 = self.vectorizer.transform(self.test_pair2).todense()
 
-        # accuracy_hdim = self.accuracy(train_vec1, train_vec2, self.train_labels, 0.585)
-        accuracy, f1_score = self.accuracy(train_vec1, train_vec2, self.train_labels, 0.685)  # With bigrams
-        print("hdim accuracy, f1 score using {} : {}\t{}".format(self.distance, "%.4f" % accuracy, "%.4f" % f1_score))
+        # Accuracy on test set
+        # accuracy, f1_score = self.accuracy(train_vec1, train_vec2, self.train_labels, 0.585)  # Train mode, with bigrams
+        # accuracy, f1_score = self.accuracy(train_vec1, train_vec2, self.train_labels, 0.685)  # With bigrams
 
-        # if use_svm:
-        #     svm_score = self.train(train_vec1, train_vec2, self.train_labels, test_vec1, test_vec2, self.test_labels)
-        #     print("SVM high dimensional accuracy : ", svm_score)
+        # accuracy, f1_score = self.accuracy(test_vec1, test_vec2, self.train_labels, 0.585)  # Without bigrams, test
+        # print("hdim accuracy, f1 score using {} : {}\t{}".format(self.distance, "%.4f" % accuracy, "%.4f" % f1_score))
 
         # vectors in low dimension
         train_vec1_ldim = self.project_vector(train_vec1, fit=True)
@@ -90,13 +87,12 @@ class ParaphraseDetector:
         test_vec1_ldim = self.project_vector(test_vec1)
         test_vec2_ldim = self.project_vector(test_vec2)
 
-        accuracy, f1_score = self.accuracy(train_vec1_ldim, train_vec2_ldim, self.train_labels, 0.7)
+        accuracy, f1_score = self.accuracy(test_vec1_ldim, test_vec2_ldim, self.test_labels, 0.585)
         print("ldim accuracy, f1 score using {} : {}\t{}".format(self.distance, "%.4f" % accuracy, "%.4f" % f1_score))
 
-        if use_svm:
-            svm_score = self.train(train_vec1_ldim, train_vec2_ldim, self.train_labels, test_vec1_ldim, test_vec2_ldim,
-                                   self.test_labels)
-            print("SVM low dimensional accuracy: ", svm_score)
+        svm_score = self.train(train_vec1_ldim, train_vec2_ldim, self.train_labels, test_vec1_ldim, test_vec2_ldim,
+                               self.test_labels)
+        print("SVM low dimensional accuracy: ", svm_score)
 
     def project_vector(self, vec, fit=False):
         """ Project vector into a low dimension space """
@@ -132,7 +128,7 @@ class ParaphraseDetector:
         true_score = sorted(true_score, reverse=True)[:(int(n * len(true_score)))]
         auto_thresh = (np.average(false_score) + np.average(true_score)) / 2
 
-        print("Auto Thresh : ", "%.2f" % auto_thresh)
+        # print("Auto Thresh : ", "%.2f" % auto_thresh)
 
         predicted = [score >= thresh for score in scores]
         accuracy = [pred == label for pred, label in zip(predicted, labels)]
@@ -190,11 +186,12 @@ if __name__ == '__main__':
     distances = ['cosine']
     vocab_size = 8000
     reduced_vocab = [1000, 2000, 4000, 6000]
-    reduced_vocab = [1000]
+    # reduced_vocab = [1000]
 
-    print("Vocab Size : ", vocab_size)
+    print("Vocab Size : ", vocab_size, "\n")
     for r_vocab in reduced_vocab:
         for distance in distances:
             print("Distance : {} \tReduced vocab : {}".format(distance, r_vocab))
-            cp = ParaphraseDetector(distance=distance, reduced_vocab_size=r_vocab, vocab_size=vocab_size)
+            cp = ParaphraseDetector(distance=distance, reduced_vocab_size=r_vocab, vocab_size=vocab_size,
+                                    use_bigrams=True)
             cp.compare()

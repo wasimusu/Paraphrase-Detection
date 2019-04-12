@@ -144,7 +144,8 @@ class Preprocess:
             if self.bigrams:
                 bigrams = list(nltk.bigrams(sentence))
                 bigrams = ["_".join(bigram) for bigram in bigrams]
-                bigrams = [bigram for bigram in bigrams if is_useful_bigram(self.useful_bigrams, bigram)]
+                # bigrams = [bigram for bigram in bigrams if is_useful_bigram(self.useful_bigrams, bigram)]
+                bigrams = [bigram for bigram in bigrams]
                 sentence += bigrams
 
             sentence = " ".join(sentence)
