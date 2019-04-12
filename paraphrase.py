@@ -3,10 +3,30 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import TruncatedSVD
 from scipy.stats import entropy
+from sklearn.metrics import mutual_info_score
 from sklearn.svm import SVC
 
 from dataloader import dataLoader
 from preprocess import Preprocess
+
+
+def kld(p, q):
+    """
+    :param p:
+    :param q:
+    :return: returns the KL divergence distance two probability distributions p and q
+    """
+    eps = 1e-10
+    p += eps
+    q += eps
+    kl = np.sum(entropy(p, q))
+    return kl
+
+
+def mi(p, q):
+    p = p.flatten().tolist()
+    q = q.flatten().tolist()
+    return mutual_info_score(p, q)
 
 
 class ParaphraseDetector:
@@ -21,8 +41,10 @@ class ParaphraseDetector:
         """
         distance_metrics = {
             'cosine': cosine_similarity,
-            'kld': self.kld
+            'kld': kld,
+            'mi': mi
         }
+
         self.distance_fn = distance_metrics[distance]
         self.distance = distance
 
@@ -87,7 +109,7 @@ class ParaphraseDetector:
         test_vec1_ldim = self.project_vector(test_vec1)
         test_vec2_ldim = self.project_vector(test_vec2)
 
-        accuracy, f1_score = self.accuracy(test_vec1_ldim, test_vec2_ldim, self.test_labels, 0.585)
+        accuracy, f1_score = self.accuracy(test_vec1_ldim, test_vec2_ldim, self.test_labels, 0.585)  # no bigram, cosine
         print("ldim accuracy, f1 score using {} : {}\t{}".format(self.distance, "%.4f" % accuracy, "%.4f" % f1_score))
 
         svm_score = self.train(train_vec1_ldim, train_vec2_ldim, self.train_labels, test_vec1_ldim, test_vec2_ldim,
@@ -154,19 +176,6 @@ class ParaphraseDetector:
 
         return accuracy, f1_score
 
-    @staticmethod
-    def kld(p, q):
-        """
-        :param p:
-        :param q:
-        :return: returns the KL divergence distance two probability distributions p and q
-        """
-        eps = 0
-        p += eps
-        q += eps
-        kl = sum(entropy(p, q))
-        return kl
-
     def inference(self, query):
         """
         For given user query, find the closest match in Y.
@@ -186,6 +195,7 @@ if __name__ == '__main__':
     distances = ['cosine']
     vocab_size = 8000
     reduced_vocab = [1000, 2000, 4000, 6000]
+    reduced_vocab = [1000]  # , 2000, 4000, 6000]
     # reduced_vocab = [1000]
 
     print("Vocab Size : ", vocab_size, "\n")
@@ -193,5 +203,5 @@ if __name__ == '__main__':
         for distance in distances:
             print("Distance : {} \tReduced vocab : {}".format(distance, r_vocab))
             cp = ParaphraseDetector(distance=distance, reduced_vocab_size=r_vocab, vocab_size=vocab_size,
-                                    use_bigrams=True)
+                                    use_bigrams=False)
             cp.compare()

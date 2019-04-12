@@ -1,5 +1,7 @@
 import unittest
 from preprocess import is_stopwords
+from paraphrase import kld
+import numpy as np
 
 
 class TestBisection(unittest.TestCase):
@@ -11,6 +13,16 @@ class TestBisection(unittest.TestCase):
         assert is_stopwords(stopwords, '?')
         assert is_stopwords(stopwords, "'")
         assert is_stopwords(stopwords, "yourselves")
+
+    def test_kld(self):
+        p = np.asarray([0.36, 0.48, 0.16, 0.16])
+        q = np.asarray([0.333, 0.333, 0.333, 0.333])
+        r = np.asarray([0, 0.1, 0.9, 0.1])
+        kl1 = kld(p, p)
+        # kl2 = kld(q, p)
+        kl2 = kld(q, r)
+        print(kl1, kl2)
+
 
 if __name__ == '__main__':
     TestBisection()
