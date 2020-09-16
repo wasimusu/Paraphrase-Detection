@@ -31,6 +31,6 @@ def dataLoader(filename):
 
 
 if __name__ == '__main__':
-    filename = "data/msr_paraphrase_test.txt"
+    filename = "../data/msr_paraphrase_test.txt"
     label, sx, sy = dataLoader(filename)
     print(label[0], sx[0], sy[0])

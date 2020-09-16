@@ -43,7 +43,7 @@ def generate_bigrams(text, save_filename='data/useful_bigrams.txt', read_percent
 
     >> [a_b, c_d, ]
     """
-    stopwords = open("data/stopwords", mode='r', encoding='utf8').read().splitlines()
+    stopwords = open("../data/stopwords", mode='r', encoding='utf8').read().splitlines()
     stopwords = sorted(stopwords)
     assert is_stopwords(stopwords, "yourselves")
 
@@ -82,7 +82,7 @@ class Preprocess:
         self.bigram_filename = bigram_filename
         self.vocab_size = vocab_size
         self.bigrams = bigrams
-        self.stopwords = open("data/stopwords", mode='r', encoding='utf8').readlines()
+        self.stopwords = open("../data/stopwords", mode='r', encoding='utf8').readlines()
         self.remove_stopwords = remove_stopwords
 
         self.useful_bigrams = []

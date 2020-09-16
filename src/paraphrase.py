@@ -6,8 +6,8 @@ from scipy.stats import entropy
 from sklearn.metrics import mutual_info_score
 from sklearn.svm import SVC
 
-from dataloader import dataLoader
-from preprocess import Preprocess
+from src.dataloader import dataLoader
+from src.preprocess import Preprocess
 
 
 def kld(p, q):
@@ -48,8 +48,8 @@ class ParaphraseDetector:
         self.distance_fn = distance_metrics[distance]
         self.distance = distance
 
-        train_filename = "data/msr_paraphrase_train.txt"
-        test_filename = "data/msr_paraphrase_test.txt"
+        train_filename = "../data/msr_paraphrase_train.txt"
+        test_filename = "../data/msr_paraphrase_test.txt"
         self.train_labels, self.train_pair1, self.train_pair2 = dataLoader(train_filename)
         self.test_labels, self.test_pair1, self.test_pair2 = dataLoader(test_filename)
         assert len(self.train_pair1) == len(self.train_pair2)

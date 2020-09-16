@@ -1,12 +1,12 @@
 import unittest
-from preprocess import is_stopwords
-from paraphrase import kld
+from src.preprocess import is_stopwords
+from src.paraphrase import kld
 import numpy as np
 
 
 class TestBisection(unittest.TestCase):
     def test_bisect(self):
-        stopwords = open("data/stopwords", mode='r', encoding='utf8').read().splitlines()
+        stopwords = open("../data/stopwords", mode='r', encoding='utf8').read().splitlines()
         stopwords = sorted(stopwords)
 
         assert is_stopwords(stopwords, 'am')
